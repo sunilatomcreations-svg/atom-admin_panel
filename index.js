@@ -484,18 +484,45 @@ app.delete('/api/articles/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
-    const deletedArticle = await Article.findByIdAndDelete(id);
+    // Find article first to get the image URL
+    const article = await Article.findById(id);
     
-    if (!deletedArticle) {
+    if (!article) {
       return res.status(404).json({
         success: false,
         error: 'Article not found'
       });
     }
+
+    // Delete hero image from Cloudinary if it exists
+    if (article.heroImg) {
+      try {
+        // Extract public_id from Cloudinary URL
+        // URL format: https://res.cloudinary.com/cloud-name/image/upload/v123456/blog-articles/image-id.jpg
+        const urlParts = article.heroImg.split('/');
+        const uploadIndex = urlParts.indexOf('upload');
+        
+        if (uploadIndex !== -1 && uploadIndex + 2 < urlParts.length) {
+          // Get everything after 'upload/v123456/' or 'upload/'
+          const publicIdWithExt = urlParts.slice(uploadIndex + 2).join('/');
+          // Remove file extension
+          const publicId = publicIdWithExt.replace(/\.[^/.]+$/, '');
+          
+          console.log(`Deleting image from Cloudinary: ${publicId}`);
+          await cloudinary.uploader.destroy(publicId);
+        }
+      } catch (cloudinaryError) {
+        console.error('Cloudinary delete error:', cloudinaryError);
+        // Continue with article deletion even if Cloudinary deletion fails
+      }
+    }
+
+    // Delete article from MongoDB
+    await Article.findByIdAndDelete(id);
     
     res.json({
       success: true,
-      message: 'Article deleted successfully'
+      message: 'Article and associated image deleted successfully'
     });
   } catch (error) {
     console.error('Delete article error:', error);
